@@ -1,0 +1,52 @@
+name: Auto Download Latest Versions
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  download-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+    
+    - name: Install dependencies
+      run: pip install requests pyyaml
+    
+    - name: Download latest versions
+      run: python scripts/downloader.py
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: auto-${{ github.run_number }}
+        release_name: Auto Update - ${{ steps.date.outputs.date }}
+        body_path: ./release_notes.md
+        draft: false
+        prerelease: false
+    
+    - name: Upload Release Assets
+      run: python scripts/upload_assets.py
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_ID: ${{ steps.create_release.outputs.id }}
+    
+    - name: Update index
+      run: |
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+        git add index.json README.md
+        git diff --staged --quiet || git commit -m "Update index"
+        git push
