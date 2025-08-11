@@ -30,8 +30,8 @@ jobs:
     
     - name: Commit and push changes
       run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
+        git config --local user.email "admyrick@mac.com"
+        git config --local user.name "admyrick"
         git add -A
         git diff --staged --quiet || git commit -m "Auto-update: $(date +'%Y-%m-%d %H:%M:%S')"
         git push
