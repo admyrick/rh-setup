@@ -1,0 +1,75 @@
+# GitHub Releases
+github_releases:
+  - name: Dolphin
+    repo: dolphin-emu/dolphin
+    pattern: windows-x64
+
+  - name: PCSX2
+    repo: PCSX2/pcsx2
+    pattern: windows
+
+# Direct Download URLs
+direct_downloads:
+  - name: 7-Zip
+    url: https://www.7-zip.org/a/7z2301-x64.exe
+    
+  - name: WinRAR
+    url: https://www.win-rar.com/fileadmin/winrar-versions/winrar-x64-623.exe
+    
+  - name: VLC
+    url: https://get.videolan.org/vlc/3.0.20/win64/vlc-3.0.20-win64.exe
+
+# SourceForge Projects
+sourceforge:
+  - name: FileZilla
+    project: filezilla
+    pattern: win64-setup.exe
+    
+  - name: PeaZip
+    project: peazip
+    pattern: WIN64.exe
+
+# GitLab Projects
+gitlab:
+  - name: GitLabApp
+    project_id: "12345678"
+    pattern: .exe
+
+# Scrape from Websites
+web_scraping:
+  - name: Notepad++
+    page_url: https://notepad-plus-plus.org/downloads/
+    link_pattern: npp\.\d+\.\d+\.Installer\.x64\.exe$
+    
+  - name: Firefox
+    page_url: https://www.mozilla.org/en-US/firefox/download/thanks/
+    link_pattern: .*win64.*\.exe
+
+  - name: Cemu
+    page_url: https://cemu.info
+    link_pattern: .*windows.*\.zip
+
+# FossHub
+fosshub:
+  - name: Audacity
+    app: Audacity
+    
+  - name: KeePass
+    app: KeePass
+
+# Archive.org
+archive_org:
+  - name: RetroEmulator
+    url: https://archive.org/download/retroarch-1.9.0/RetroArch.7z
+
+# MediaFire
+mediafire:
+  - name: CustomApp
+    url: https://www.mediafire.com/file/xxxxx/app.zip/file
+    requires_parsing: true
+
+# Mega.nz (requires special handling)
+mega:
+  - name: LargeEmulatorPack
+    url: https://mega.nz/file/XXXXX#YYYYY
+    requires_megapy: true

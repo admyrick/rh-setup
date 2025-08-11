@@ -1,111 +1,102 @@
 import json
 import requests
-import yaml
+import re
+from bs4 import BeautifulSoup
 from pathlib import Path
 from datetime import datetime
+import hashlib
 
-class SmartDownloader:
+class UniversalDownloader:
     def __init__(self):
-        self.temp_dir = Path('temp_downloads')
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        self.temp_dir = Path('downloads')
         self.temp_dir.mkdir(exist_ok=True)
-        
-        with open('sources.yaml', 'r') as f:
-            self.sources = yaml.safe_load(f)
-        
-        self.index = {"updated": str(datetime.now()), "software": {}}
-        self.release_notes = []
     
-    def get_latest_github_release(self, repo):
-        """Get latest release info from GitHub"""
-        url = f"https://api.github.com/repos/{repo}/releases/latest"
-        resp = requests.get(url)
-        resp.raise_for_status()
-        return resp.json()
-    
-    def download_file(self, url, filename):
-        """Download file to temp directory"""
+    def download_from_direct_url(self, url, filename=None):
+        """Download from direct URL"""
+        if not filename:
+            filename = url.split('/')[-1]
+        
         filepath = self.temp_dir / filename
-        print(f"Downloading {filename}...")
+        print(f"Downloading from {url}")
         
-        resp = requests.get(url, stream=True)
+        resp = self.session.get(url, stream=True)
         resp.raise_for_status()
         
         with open(filepath, 'wb') as f:
-            for chunk in resp.iter_content(chunk_size=1024*1024):
+            for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
         
         return filepath
     
-    def process_all_sources(self):
-        """Download all configured software"""
-        for category, items in self.sources.items():
-            self.index["software"][category] = []
+    def download_from_sourceforge(self, project, filename_pattern=None):
+        """Download from SourceForge"""
+        # Get latest file URL
+        rss_url = f"https://sourceforge.net/projects/{project}/rss?path=/"
+        resp = self.session.get(rss_url)
+        
+        # Parse RSS for latest file
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(resp.content)
+        
+        for item in root.findall('.//item'):
+            link = item.find('link').text
+            if filename_pattern and filename_pattern not in link:
+                continue
             
-            for item in items:
-                try:
-                    if item['type'] == 'github':
-                        self.process_github_source(item, category)
-                    elif item['type'] == 'direct':
-                        self.process_direct_source(item, category)
-                except Exception as e:
-                    print(f"Error processing {item['name']}: {e}")
+            # SourceForge download URL
+            download_url = link.replace('/files/', '/projects/').replace('/download', '')
+            download_url = f"{download_url}/download"
+            
+            filename = link.split('/')[-2]
+            return self.download_from_direct_url(download_url, filename)
     
-    def process_github_source(self, item, category):
-        """Process GitHub release source"""
-        release = self.get_latest_github_release(item['repo'])
-        version = release['tag_name']
+    def scrape_download_link(self, page_url, link_pattern):
+        """Scrape a webpage for download links"""
+        resp = self.session.get(page_url)
+        soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Check for updates
-        if self.is_new_version(item['name'], version):
-            for asset in release['assets']:
-                if self.should_download_asset(asset['name'], item.get('pattern')):
-                    filepath = self.download_file(
-                        asset['browser_download_url'],
-                        f"{item['name']}_{version}_{asset['name']}"
-                    )
-                    
-                    self.index["software"][category].append({
-                        "name": item['name'],
-                        "version": version,
-                        "file": filepath.name,
-                        "size": asset['size'],
-                        "download_url": asset['browser_download_url']
-                    })
-                    
-                    self.release_notes.append(
-                        f"- **{item['name']}** updated to {version}"
-                    )
-    
-    def should_download_asset(self, filename, pattern):
-        """Check if asset matches pattern"""
-        if not pattern:
-            return True
-        if isinstance(pattern, list):
-            return any(p in filename.lower() for p in pattern)
-        return pattern in filename.lower()
-    
-    def is_new_version(self, software, version):
-        """Check if this is a new version"""
-        # Load previous index if exists
-        try:
-            with open('index.json', 'r') as f:
-                old_index = json.load(f)
-                # Check old versions logic here
-                return True  # Simplified
-        except:
-            return True
-    
-    def save_outputs(self):
-        """Save index and release notes"""
-        with open('index.json', 'w') as f:
-            json.dump(self.index, f, indent=2)
+        # Find all links matching pattern
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            if re.search(link_pattern, href):
+                # Make absolute URL if relative
+                if not href.startswith('http'):
+                    from urllib.parse import urljoin
+                    href = urljoin(page_url, href)
+                
+                return self.download_from_direct_url(href)
         
-        with open('release_notes.md', 'w') as f:
-            f.write("## Updates\n\n")
-            f.write('\n'.join(self.release_notes) if self.release_notes 
-                   else "No updates in this run")
-
-if __name__ == "__main__":
-    downloader = SmartDownloader()
-    downloader.process_all_sources()
-    downloader.save_outputs()
+        raise ValueError(f"No download link found matching {link_pattern}")
+    
+    def download_gitlab_release(self, project_id, filename_pattern=None):
+        """Download from GitLab releases"""
+        url = f"https://gitlab.com/api/v4/projects/{project_id}/releases"
+        resp = self.session.get(url)
+        releases = resp.json()
+        
+        if releases:
+            latest = releases[0]
+            for link in latest.get('assets', {}).get('links', []):
+                if filename_pattern and filename_pattern not in link['name']:
+                    continue
+                return self.download_from_direct_url(link['url'], link['name'])
+    
+    def download_from_fosshub(self, app_name):
+        """Download from FossHub"""
+        # FossHub requires special handling
+        page_url = f"https://www.fosshub.com/{app_name}.html"
+        # Would need to handle their JavaScript-based downloads
+        pass
+    
+    def download_from_github_direct(self, url):
+        """Download non-release files from GitHub (like raw files)"""
+        # Convert to raw URL if needed
+        if 'github.com' in url and '/blob/' in url:
+            url = url.replace('github.com', 'raw.githubusercontent.com')
+            url = url.replace('/blob/', '/')
+        
+        return self.download_from_direct_url(url)
